@@ -48,6 +48,7 @@
 #include <lib/mathlib/mathlib.h>
 #include <lib/parameters/param.h>
 #include <lib/perf/perf_counter.h>
+#include <lib/sensor_calibration/Utilities.hpp>
 #include <px4_platform_common/getopt.h>
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/module_params.h>
@@ -307,6 +308,38 @@ int Sensors::parameters_update()
 	param_get(_parameter_handles.air_tube_diameter_mm, &_parameters.air_tube_diameter_mm);
 
 	_voted_sensors_update.parametersUpdate();
+
+
+	// preserve all valid calibrations even if sensor is currently missing
+	//  ensure at least first X sensors are marked active
+	for (int i = 0; i < MAX_SENSOR_COUNT; i++) {
+		uint32_t device_id_accel = calibration::GetCalibrationParam("ACC",  "ID", i);
+		uint32_t device_id_gyro  = calibration::GetCalibrationParam("GYRO", "ID", i);
+		uint32_t device_id_mag   = calibration::GetCalibrationParam("MAG",  "ID", i);
+
+		bool external_accel = (calibration::GetCalibrationParam("ACC",  "ROT", i) >= 0);
+		bool external_gyro  = (calibration::GetCalibrationParam("GYRO", "ROT", i) >= 0);
+		bool external_mag   = (calibration::GetCalibrationParam("MAG",  "ROT", i) >= 0);
+
+		calibration::Accelerometer accel_cal(device_id_accel, external_accel);
+		calibration::Gyroscope gyro_cal(device_id_gyro, external_gyro);
+		calibration::Magnetometer mag_cal(device_id_mag, external_mag);
+
+		if ((device_id_accel == 0) && (orb_exists(ORB_ID(sensor_accel), i) == PX4_OK)) {
+			accel_cal.set_calibration_index(i);
+			accel_cal.ParametersUpdate();
+		}
+
+		if ((device_id_gyro == 0) && (orb_exists(ORB_ID(sensor_gyro), i) == PX4_OK)) {
+			gyro_cal.set_calibration_index(i);
+			gyro_cal.ParametersUpdate();
+		}
+
+		if ((device_id_mag == 0) && (orb_exists(ORB_ID(sensor_mag), i) == PX4_OK)) {
+			mag_cal.set_calibration_index(i);
+			mag_cal.ParametersUpdate();
+		}
+	}
 
 	return PX4_OK;
 }
